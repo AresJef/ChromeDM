@@ -1,0 +1,16 @@
+LICENSE
+README.md
+pyproject.toml
+setup.cfg
+src/chromedm/__init__.py
+src/chromedm/driver.py
+src/chromedm/errors.py
+src/chromedm/logs.py
+src/chromedm/manager.py
+src/chromedm/settings.py
+src/chromedm/utils.py
+src/chromedm.egg-info/PKG-INFO
+src/chromedm.egg-info/SOURCES.txt
+src/chromedm.egg-info/dependency_links.txt
+src/chromedm.egg-info/requires.txt
+src/chromedm.egg-info/top_level.txt
