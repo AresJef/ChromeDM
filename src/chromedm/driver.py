@@ -308,24 +308,19 @@ class DriverCacheManager:
         metadata = self.__load_metadata()
 
         # Match binary driver
-        # . With browser version - loose match
         if driver_version is None:
-            queries = [
-                "os_type == @os_type",
-                "chrome_version == @chrome_version",
-            ]
-        # . With driver version - exact match
+            # . Loose match
+            query = 'os_type == "%s" and chrome_version == "%s"' % (
+                os_type,
+                chrome_version,
+            )
         else:
-            queries = [
-                "os_type == @os_type",
-                "chrome_version == @chrome_version",
-                "driver_version == @driver_version",
-            ]
-        match_idx = (
-            metadata.query(" and ".join(queries))
-            .sort_values(["time"], ascending=False)
-            .index
-        )
+            # . Strict match
+            query = (
+                'os_type == "%s" and chrome_version == "%s" and driver_version == "%s"'
+                % (os_type, chrome_version, driver_version)
+            )
+        match_idx = metadata.query(query).sort_values(["time"], ascending=False).index
 
         # Return binary driver path
         for idx in match_idx:
@@ -370,12 +365,11 @@ class DriverCacheManager:
         metadata = self.__load_metadata()
 
         # Query matching driver
-        queries = [
-            "os_type == @os_type",
-            "chrome_version == @chrome_version",
-            "driver_version == @driver_version",
-        ]
-        match_idx = metadata.query(" and ".join(queries)).index
+        query = (
+            'os_type == "%s" and chrome_version == "%s" and driver_version == "%s"'
+            % (os_type, chrome_version, driver_version)
+        )
+        match_idx = metadata.query(query).index
 
         # Update metadata
         if not match_idx.empty:
