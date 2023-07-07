@@ -211,3 +211,7 @@ class ChromeDM:
             timeout=timeout,
             proxy=proxy,
         )
+
+    # Magic method
+    def __repr__(self) -> str:
+        return '<ChromeDM (dir="%s")>' % self.__dir
