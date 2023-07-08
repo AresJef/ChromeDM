@@ -479,3 +479,13 @@ class DriverCacheManager:
 
         # Save metadata
         self.__save_metadata(metadata)
+
+    # Magic methods
+    def __repr__(self) -> str:
+        return "<DriverCacheManager (dir='%s')>" % self.__dir
+
+    def __hash__(self) -> int:
+        return hash(self.__repr__())
+
+    def __eq__(self, __o: object) -> bool:
+        return hash(self) == hash(__o) if isinstance(__o, DriverCacheManager) else False

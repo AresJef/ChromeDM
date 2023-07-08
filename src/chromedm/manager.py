@@ -214,4 +214,10 @@ class ChromeDM:
 
     # Magic method
     def __repr__(self) -> str:
-        return '<ChromeDM (dir="%s")>' % self.__dir
+        return "<ChromeDM (dir='%s')>" % self.__dir
+
+    def __hash__(self) -> int:
+        return hash(self.__repr__())
+
+    def __eq__(self, __o: object) -> bool:
+        return hash(self) == hash(__o) if isinstance(__o, ChromeDM) else False
