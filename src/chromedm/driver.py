@@ -179,12 +179,21 @@ class DriverDownloader:
                         elif code == 401:
                             _logger.warning("Exceeded api rate limit, please wait...")
                             await asyncio.sleep(1)
+                        # Driver Not Found
+                        elif code == 404:
+                            raise _errors.ApiDriverNotFoundError(
+                                "\nDriver not found from api: {}"
+                                "\nResponse body: {}"
+                                "\nResponse headers: {}".format(
+                                    res.url, await res.text(), dict(res.headers)
+                                )
+                            )
                         # Unknown Error
                         else:
                             raise _errors.ApiUnknownError(
                                 "\nUnknown error from api: {}"
-                                "\nResponse body:\n{}"
-                                "\nResponse headers:\n{}".format(
+                                "\nResponse body: {}"
+                                "\nResponse headers: {}".format(
                                     res.url, await res.text(), dict(res.headers)
                                 )
                             )
@@ -247,14 +256,18 @@ class DriverDownloader:
                         # Driver Not Found
                         elif code == 404:
                             raise _errors.ApiDriverNotFoundError(
-                                "There is no such driver from api: {}".format(res.url)
+                                "\nThere is not such driver from: {}"
+                                "\nResponse body: {}"
+                                "\nResponse headers: {}".format(
+                                    res.url, await res.text(), dict(res.headers)
+                                )
                             )
                         # Unknown Error
                         else:
                             raise _errors.ApiUnknownError(
                                 "\nUnknown error from api: {}"
-                                "\nResponse body:\n{}"
-                                "\nResponse headers:\n{}".format(
+                                "\nResponse body: {}"
+                                "\nResponse headers: {}".format(
                                     res.url, await res.text(), dict(res.headers)
                                 )
                             )
