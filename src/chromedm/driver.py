@@ -81,7 +81,10 @@ class Driver:
                 return files[0]
 
             for file in files:
-                if self.__name in file:
+                if "/" in file:
+                    if file.split("/")[-1].startswith(self.__name):
+                        return file
+                elif self.__name in file:
                     return file
 
             raise _errors.DriverUnpackError(
@@ -160,17 +163,13 @@ class DriverDownloader:
             e.g.:`'http://127.0.0.1:7890'`. Default `None`.
         :return: The webdriver version.
         """
-
         # Construct request url
-        if chrome_version:
-            url = "%s_%s" % (_LATEST_RELEASE_URL, chrome_version)
-        else:
-            url = _LATEST_RELEASE_URL
+        url = "%s_%s" % (_LATEST_RELEASE_URL, chrome_version)
 
         # Request driver version
-        try:
-            async with _ClientSession() as session:
-                while True:
+        async with _ClientSession() as session:
+            while True:
+                try:
                     async with session.get(url, timeout=timeout, proxy=proxy) as res:
                         # Success
                         if (code := res.status) == 200:
@@ -182,11 +181,7 @@ class DriverDownloader:
                         # Driver Not Found
                         elif code == 404:
                             raise _errors.ApiDriverNotFoundError(
-                                "\nDriver not found from api: {}"
-                                "\nResponse body: {}"
-                                "\nResponse headers: {}".format(
-                                    res.url, await res.text(), dict(res.headers)
-                                )
+                                "\nDriver not found from api: {}".format(res.url)
                             )
                         # Unknown Error
                         else:
@@ -197,12 +192,17 @@ class DriverDownloader:
                                     res.url, await res.text(), dict(res.headers)
                                 )
                             )
-        # Timeout Error
-        except asyncio.TimeoutError:
-            raise _errors.ApiTimeoutError(
-                "Timeout when retrieving driver download src "
-                "from api: {}".format(url)
-            )
+                # Connection error
+                except _errors.ClientConnectorError as err:
+                    raise _errors.ApiConnectionError(
+                        "Can't not connect to api: {}".format(url)
+                    ) from err
+                # Timeout Error
+                except asyncio.TimeoutError as err:
+                    raise _errors.ApiTimeoutError(
+                        "Timeout when retrieving driver download src "
+                        "from api: {}".format(url)
+                    ) from err
 
     @staticmethod
     async def download_driver(
@@ -237,9 +237,9 @@ class DriverDownloader:
         )
 
         # Download driver
-        try:
-            async with _ClientSession() as session:
-                while True:
+        async with _ClientSession() as session:
+            while True:
+                try:
                     async with session.get(
                         url,
                         chunked=True,
@@ -271,10 +271,15 @@ class DriverDownloader:
                                     res.url, await res.text(), dict(res.headers)
                                 )
                             )
-        except asyncio.TimeoutError:
-            raise _errors.ApiTimeoutError(
-                "Timeout when downloading driver from api: {}".format(url)
-            )
+                # Connection error
+                except _errors.ClientConnectorError as err:
+                    raise _errors.ApiConnectionError(
+                        "Can't not connect to api: {}".format(url)
+                    ) from err
+                except asyncio.TimeoutError as err:
+                    raise _errors.ApiTimeoutError(
+                        "Timeout when downloading driver from api: {}".format(url)
+                    ) from err
 
 
 class DriverCacheManager:

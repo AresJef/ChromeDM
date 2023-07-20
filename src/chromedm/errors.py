@@ -1,5 +1,8 @@
 # /usr/bin/python
 # -*- coding: UTF-8 -*-
+from aiohttp import ClientConnectorError
+
+
 class ChromeDMError(Exception):
     """ChromeDM Error."""
 
@@ -22,6 +25,10 @@ class DriverUnpackError(DriverError):
 
 class ApiError(ChromeDMError):
     """Api Error."""
+
+
+class ApiConnectionError(ApiError):
+    """Api Connection Error."""
 
 
 class ApiTimeoutError(ApiError, TimeoutError):
