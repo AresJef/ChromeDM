@@ -3,14 +3,15 @@
 from __future__ import annotations
 import asyncio
 from shutil import rmtree as _rmtree
+from os.path import sep as _sep
 from os import makedirs as _makedirs
+from os.path import exists as _exists
 from os.path import join as _joinpath
-from os.path import exists as _exists, sep as _sep
-from packaging.version import parse as _parse_version
 from datetime import datetime as _datetime
 from tarfile import open as _tarfile_open
 from tarfile import ReadError as _ReadError
 from subprocess import call as _subprocess_call
+from packaging.version import parse as _parse_version
 
 from pandas import DataFrame as _DataFrame
 from pandas import read_parquet as _read_parquet
@@ -19,13 +20,16 @@ from aiohttp import ClientResponse as _ClientResponse
 
 from chromedm import errors as _errors
 from chromedm.logs import logger as _logger
-from chromedm.utils import os_name as _os_name
-from chromedm.utils import ZipFile as _ZipFile
-from chromedm.utils import LinuxZipFileWithPermissions as _LinuxZipFileWithPermissions
-from chromedm.settings import DRIVER_HOST_URL as _DRIVER_HOST_URL
+from chromedm.settings import Channel as _Channel
 from chromedm.settings import MAC_SP_VERION_M1 as _MAC_SP_VERION_M1
-from chromedm.settings import LATEST_RELEASE_URL as _LATEST_RELEASE_URL
 from chromedm.settings import DRIVER_FILENAME_RE as _DRIVER_FILENAME_RE
+from chromedm.settings import GOOGLEAPIS_URL as _GOOGLEAPIS_URL
+from chromedm.settings import GOOGLEAPIS_ENDPOINT as _GOOGLEAPIS_ENDPOINT
+from chromedm.settings import CHROMELABS_URL as _CHROMELABS_URL
+from chromedm.settings import CHROMELABS_ENDPOINT as _CHROMELABS_ENDPOINT
+from chromedm.settings import CHROMELABS_DL_URL as _CHROMELABS_DL_URL
+from chromedm.utils import os_name as _os_name, ZipFile as _ZipFile
+from chromedm.utils import LinuxZipFileWithPermissions as _LinuxZipFileWithPermissions
 
 __all__ = ["Driver", "DriverDownloader", "DriverCacheManager"]
 
@@ -51,10 +55,14 @@ class Driver:
             filename = _DRIVER_FILENAME_RE.findall(
                 self.__response.headers["content-disposition"]
             )[0]
-        except KeyError:
-            filename = f"{self.__name}.zip"
-        except IndexError:
-            filename = f"{self.__name}.exe"
+        except Exception:
+            url = str(self.__response.url)
+            if url.endswith(".tar.gz"):
+                filename = f"{self.__name}.tar.gz"
+            elif url.endswith(".exe"):
+                filename = f"{self.__name}.exe"
+            else:
+                filename = f"{self.__name}.zip"
 
         if '"' in filename:
             filename = filename.replace('"', "")
@@ -153,7 +161,7 @@ class DriverDownloader:
         chrome_version: str,
         timeout: int | None = None,
         proxy: str | None = None,
-    ) -> str:
+    ) -> dict[str, str]:
         """Get the latest ChromeDriver version based on Chrome version.
 
         :param version: The Chrome browser version.
@@ -162,51 +170,139 @@ class DriverDownloader:
             This should be a string representing the address of the proxy,
             e.g.:`'http://127.0.0.1:7890'`. Default `None`.
         :return: The webdriver version.
-        """
-        # Construct request url
-        url = "%s_%s" % (_LATEST_RELEASE_URL, chrome_version)
 
-        # Request driver version
-        async with _ClientSession() as session:
-            while True:
-                try:
-                    async with session.get(url, timeout=timeout, proxy=proxy) as res:
-                        # Success
-                        if (code := res.status) == 200:
-                            return (await res.text()).strip()
-                        # Rate Limit Error
-                        elif code == 401:
-                            _logger.warning("Exceeded api rate limit, please wait...")
-                            await asyncio.sleep(1)
-                        # Driver Not Found
-                        elif code == 404:
-                            raise _errors.ApiDriverNotFoundError(
-                                "\nDriver not found from api: {}".format(res.url)
-                            )
-                        # Unknown Error
-                        else:
-                            raise _errors.ApiUnknownError(
-                                "\nUnknown error from api: {}"
-                                "\nResponse body: {}"
-                                "\nResponse headers: {}".format(
-                                    res.url, await res.text(), dict(res.headers)
+        ### Return example:
+        >>> {version: '114.0.5735.90', channel: 'googleapis'} # googleapis
+        >>> {version: '115.0.5790.90', channel: 'chromelabs'} # chromelabs
+        >>> {} # Not found
+        """
+
+        async def googleapis() -> dict[str, str]:
+            # Construct request url
+            url = "%s/%s_%s" % (_GOOGLEAPIS_URL, _GOOGLEAPIS_ENDPOINT, chrome_version)
+
+            # Request driver version
+            async with _ClientSession() as session:
+                while True:
+                    try:
+                        async with session.get(
+                            url, timeout=timeout, proxy=proxy
+                        ) as res:
+                            # Success
+                            if (code := res.status) == 200:
+                                try:
+                                    return {
+                                        "version": (await res.text()).strip(),
+                                        "channel": _Channel.GOOGLEAPIS,
+                                    }
+                                except Exception:
+                                    return {}
+                            # Rate Limit Error
+                            elif code == 401:
+                                _logger.warning(
+                                    "Exceeded api rate limit, please wait..."
                                 )
-                            )
-                # Connection error
-                except _errors.ClientConnectorError as err:
-                    raise _errors.ApiConnectionError(
-                        "Can't not connect to api: {}".format(url)
-                    ) from err
-                # Timeout Error
-                except asyncio.TimeoutError as err:
-                    raise _errors.ApiTimeoutError(
-                        "Timeout when retrieving driver download src "
-                        "from api: {}".format(url)
-                    ) from err
+                                await asyncio.sleep(1)
+                            # Driver Not Found
+                            elif code == 404:
+                                raise _errors.ApiDriverNotFoundError(
+                                    "\nDriver not found from api: {}".format(res.url)
+                                )
+                            # Unknown Error
+                            else:
+                                raise _errors.ApiUnknownError(
+                                    "\nUnknown error from api: {}"
+                                    "\nResponse body: {}"
+                                    "\nResponse headers: {}".format(
+                                        res.url, await res.text(), dict(res.headers)
+                                    )
+                                )
+                    # Connection error
+                    except _errors.ClientConnectorError as err:
+                        raise _errors.ApiConnectionError(
+                            "Can't not connect to api: {}".format(url)
+                        ) from err
+                    # Timeout Error
+                    except asyncio.TimeoutError as err:
+                        raise _errors.ApiTimeoutError(
+                            "Timeout when retrieving driver download src "
+                            "from api: {}".format(url)
+                        ) from err
+
+        async def chromelabs() -> dict[str, str]:
+            # Construct request url
+            url = "%s/%s" % (_CHROMELABS_URL, _CHROMELABS_ENDPOINT)
+
+            # Request driver version
+            async with _ClientSession() as session:
+                while True:
+                    try:
+                        async with session.get(
+                            url, timeout=timeout, proxy=proxy
+                        ) as res:
+                            # Success
+                            if (code := res.status) == 200:
+                                try:
+                                    versions: list[dict] = (await res.json()).get(
+                                        "versions", []
+                                    )
+                                except Exception:
+                                    return {}
+                                else:
+                                    break
+                            # Rate Limit Error
+                            elif code == 401:
+                                _logger.warning(
+                                    "Exceeded api rate limit, please wait..."
+                                )
+                                await asyncio.sleep(1)
+                            # Unknown Error
+                            else:
+                                raise _errors.ApiUnknownError(
+                                    "\nUnknown error from api: {}"
+                                    "\nResponse body: {}"
+                                    "\nResponse headers: {}".format(
+                                        res.url, await res.text(), dict(res.headers)
+                                    )
+                                )
+                    # Connection error
+                    except _errors.ClientConnectorError as err:
+                        raise _errors.ApiConnectionError(
+                            "Can't not connect to api: {}".format(url)
+                        ) from err
+                    # Timeout Error
+                    except asyncio.TimeoutError as err:
+                        raise _errors.ApiTimeoutError(
+                            "Timeout when retrieving driver download src "
+                            "from api: {}".format(url)
+                        ) from err
+
+            # Match driver version
+            matched: list[str] = []
+            for ver in versions:
+                version = ver.get("version", "")
+                downloads = ver.get("downloads", {})
+                if version.startswith(chrome_version) and "chromedriver" in downloads:
+                    matched.append(version)
+            if matched:
+                return {"version": matched[-1], "channel": _Channel.CHROMELABS}
+            else:
+                return {}
+
+        # Get driver version
+        for chl in [googleapis, chromelabs]:
+            try:
+                version = await chl()
+            except (_errors.ApiDriverNotFoundError, _errors.ApiConnectionError):
+                continue
+            else:
+                if version:
+                    return version
+        return {}
 
     @staticmethod
     async def download_driver(
-        driver_version: str,
+        driver_version: dict[str, str],
         os_type: str,
         timeout: int | None = None,
         proxy: str | None = None,
@@ -222,64 +318,138 @@ class DriverDownloader:
         :return: The downloaded ChromeDrive <`class Driver'>.
         """
 
-        # Adjust os type for MacOS M1 (Legacy version)
-        if (
-            os_type.startswith("mac")
-            and _parse_version(driver_version) < _MAC_SP_VERION_M1
-        ):
-            os_type = os_type.replace("mac_arm64", "mac64_m1")
+        async def googleapis(os_type: str, version: str) -> Driver:
+            # Adjust os type for MacOS M1 (Legacy version)
+            if (
+                os_type.startswith("mac")
+                and _parse_version(version) < _MAC_SP_VERION_M1
+            ):
+                os_type = os_type.replace("mac_arm64", "mac64_m1")
 
-        # Construct download url
-        url = "%s/%s/chromedriver_%s.zip" % (
-            _DRIVER_HOST_URL,
-            driver_version,
-            os_type,
-        )
+            # Construct download url
+            url = "%s/%s/chromedriver_%s.zip" % (
+                _GOOGLEAPIS_URL,
+                version,
+                os_type,
+            )
+
+            # Download driver
+            async with _ClientSession() as session:
+                while True:
+                    try:
+                        async with session.get(
+                            url,
+                            chunked=True,
+                            timeout=timeout,
+                            proxy=proxy,
+                        ) as res:
+                            # Success
+                            if (code := res.status) == 200:
+                                return Driver(await res.content.read(), res)
+                            # Rate Limit Error
+                            elif code == 401:
+                                _logger.warning(
+                                    "Exceeded api rate limit, please wait..."
+                                )
+                                await asyncio.sleep(1)
+                            # Driver Not Found
+                            elif code == 404:
+                                raise _errors.ApiDriverNotFoundError(
+                                    "\nThere is not such driver from: {}"
+                                    "\nResponse body: {}"
+                                    "\nResponse headers: {}".format(
+                                        res.url, await res.text(), dict(res.headers)
+                                    )
+                                )
+                            # Unknown Error
+                            else:
+                                raise _errors.ApiUnknownError(
+                                    "\nUnknown error from api: {}"
+                                    "\nResponse body: {}"
+                                    "\nResponse headers: {}".format(
+                                        res.url, await res.text(), dict(res.headers)
+                                    )
+                                )
+                    # Connection error
+                    except _errors.ClientConnectorError as err:
+                        raise _errors.ApiConnectionError(
+                            "Can't not connect to api: {}".format(url)
+                        ) from err
+                    except asyncio.TimeoutError as err:
+                        raise _errors.ApiTimeoutError(
+                            "Timeout when downloading driver from api: {}".format(url)
+                        ) from err
+
+        async def chromelabs(os_type: str, version: str) -> Driver:
+            # Adjust os type for MacOS M1 (Legacy version)
+            if os_type.startswith("mac"):
+                if "arm" in os_type:
+                    os_type = "mac-arm64"
+                else:
+                    os_type = "mac-x64"
+
+            # Construct download url
+            url = "%s/%s/%s/chromedriver-%s.zip" % (
+                _CHROMELABS_DL_URL,
+                version,
+                os_type,
+                os_type,
+            )
+
+            # Download driver
+            async with _ClientSession() as session:
+                while True:
+                    try:
+                        async with session.get(
+                            url,
+                            chunked=True,
+                            timeout=timeout,
+                            proxy=proxy,
+                        ) as res:
+                            # Success
+                            if (code := res.status) == 200:
+                                return Driver(await res.content.read(), res)
+                            # Rate Limit Error
+                            elif code == 401:
+                                _logger.warning(
+                                    "Exceeded api rate limit, please wait..."
+                                )
+                                await asyncio.sleep(1)
+                            # Unknown Error
+                            else:
+                                raise _errors.ApiUnknownError(
+                                    "\nUnknown error from api: {}"
+                                    "\nResponse body: {}"
+                                    "\nResponse headers: {}".format(
+                                        res.url, await res.text(), dict(res.headers)
+                                    )
+                                )
+                    # Connection error
+                    except _errors.ClientConnectorError as err:
+                        raise _errors.ApiConnectionError(
+                            "Can't not connect to api: {}".format(url)
+                        ) from err
+                    except asyncio.TimeoutError as err:
+                        raise _errors.ApiTimeoutError(
+                            "Timeout when downloading driver from api: {}".format(url)
+                        ) from err
 
         # Download driver
-        async with _ClientSession() as session:
-            while True:
-                try:
-                    async with session.get(
-                        url,
-                        chunked=True,
-                        timeout=timeout,
-                        proxy=proxy,
-                    ) as res:
-                        # Success
-                        if (code := res.status) == 200:
-                            return Driver(await res.content.read(), res)
-                        # Rate Limit Error
-                        elif code == 401:
-                            _logger.warning("Exceeded api rate limit, please wait...")
-                            await asyncio.sleep(1)
-                        # Driver Not Found
-                        elif code == 404:
-                            raise _errors.ApiDriverNotFoundError(
-                                "\nThere is not such driver from: {}"
-                                "\nResponse body: {}"
-                                "\nResponse headers: {}".format(
-                                    res.url, await res.text(), dict(res.headers)
-                                )
-                            )
-                        # Unknown Error
-                        else:
-                            raise _errors.ApiUnknownError(
-                                "\nUnknown error from api: {}"
-                                "\nResponse body: {}"
-                                "\nResponse headers: {}".format(
-                                    res.url, await res.text(), dict(res.headers)
-                                )
-                            )
-                # Connection error
-                except _errors.ClientConnectorError as err:
-                    raise _errors.ApiConnectionError(
-                        "Can't not connect to api: {}".format(url)
-                    ) from err
-                except asyncio.TimeoutError as err:
-                    raise _errors.ApiTimeoutError(
-                        "Timeout when downloading driver from api: {}".format(url)
-                    ) from err
+        try:
+            channel = driver_version["channel"]
+            version = driver_version["version"]
+        except KeyError as err:
+            raise _errors.ApiDriverNotFoundError(
+                "Invalid driver version: {}".format(driver_version)
+            ) from err
+        if channel == _Channel.GOOGLEAPIS:
+            return await googleapis(os_type, version)
+        elif channel == _Channel.CHROMELABS:
+            return await chromelabs(os_type, version)
+        else:
+            raise _errors.ApiDriverNotFoundError(
+                "Invalid driver version: {}".format(driver_version)
+            )
 
 
 class DriverCacheManager:

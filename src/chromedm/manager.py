@@ -145,16 +145,28 @@ class ChromeDM:
         if latest:
             driver_version = await self.__get_driver_version(proxy, timeout)
         else:
-            driver_version = None
+            driver_version = {}
 
         # Match driver from cache
-        driver = self.__dcm.match(self.__os_type, chrome_version, driver_version)
+        driver = self.__dcm.match(
+            self.__os_type,
+            chrome_version,
+            driver_version.get("version"),
+        )
         if driver is not None:
             return driver
 
-        # Download new driver
-        if driver_version is None:
+        # Match driver from api
+        if not driver_version:
             driver_version = await self.__get_driver_version(proxy, timeout)
+
+        if not driver_version:
+            raise _errors.ApiDriverNotFoundError(
+                "\nUnable to find a matching driver version "
+                "for Chrome: {}".format(chrome_version)
+            )
+
+        # Download new driver
         driver = await _DriverDownloader.download_driver(
             driver_version,
             self.__os_type,
@@ -166,7 +178,7 @@ class ChromeDM:
         return self.__dcm.save(
             self.__os_type,
             chrome_version,
-            driver_version,
+            driver_version.get("version"),
             driver,
             max_cache,
         )
@@ -188,7 +200,11 @@ class ChromeDM:
         self.__chrome_version = version
         return version
 
-    async def __get_driver_version(self, proxy: str | None, timeout: int) -> str | None:
+    async def __get_driver_version(
+        self,
+        proxy: str | None,
+        timeout: int,
+    ) -> dict[str, str]:
         """Get the latest remote ChromeDriver version
         matching local Chrome browser.
 
@@ -197,8 +213,12 @@ class ChromeDM:
             e.g.:`'http://127.0.0.1:7890'`.
         :param timeout: Timeout for driver download.
         :raises: Subclass of `ApiError`.
-        :return: Latest remote ChromeDriver version in `str`.
-        e.g.: `'114.0.5735.90'`.
+        :return: Latest remote ChromeDriver version in dict.
+
+        ### Return example:
+        >>> {version: '114.0.5735.90', channel: 'googleapis'} # googleapis
+        >>> {version: '115.0.5790.90', channel: 'chromelabs'} # chromelabs
+        >>> {} # Not found
         """
 
         # Get local chrome version

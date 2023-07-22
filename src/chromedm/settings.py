@@ -3,8 +3,18 @@
 from re import compile as _compile
 from packaging.version import parse as _parse_version
 
-DRIVER_HOST_URL: str = "https://chromedriver.storage.googleapis.com"
-LATEST_RELEASE_URL: str = DRIVER_HOST_URL + "/LATEST_RELEASE"
+
+class Channel:
+    GOOGLEAPIS: str = "googleapis"
+    CHROMELABS: str = "chromelabs"
+
+
+GOOGLEAPIS_URL: str = "https://chromedriver.storage.googleapis.com"
+GOOGLEAPIS_ENDPOINT: str = "LATEST_RELEASE"
+CHROMELABS_URL: str = "https://googlechromelabs.github.io/chrome-for-testing"
+CHROMELABS_ENDPOINT: str = "known-good-versions-with-downloads.json"
+CHROMELABS_DL_URL: str = "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing"
+MAC_SP_VERION_M1 = _parse_version("106.0.5249.61")
 VERSION_COMMAND_MAPPER: dict[str, list[str]] = {
     "linux": [
         "google-chrome",
@@ -23,4 +33,3 @@ VERSION_COMMAND_MAPPER: dict[str, list[str]] = {
 }
 VERSION_CAMMAND_RE = _compile(r"\d+\.\d+\.\d+")
 DRIVER_FILENAME_RE = _compile(r"filename=(.+)")
-MAC_SP_VERION_M1 = _parse_version("106.0.5249.61")
